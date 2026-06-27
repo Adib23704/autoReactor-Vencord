@@ -1,33 +1,76 @@
+.vc-autoReactor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    margin-top: 0.75em;
+}
+
 .vc-autoReactor-row {
     display: flex;
     align-items: center;
-    gap: 0.5em;
-    margin-bottom: 0.5em;
-}
-
-.vc-autoReactor-row-input {
-    flex: 1;
+    gap: 0.6em;
 }
 
 .vc-autoReactor-status {
-    flex-shrink: 0;
-    font-size: 1.1em;
-    width: 1.2em;
-    text-align: center;
+    flex: 0 0 1.5em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5em;
+    height: 1.5em;
+    font-size: 0.8em;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 50%;
+    user-select: none;
+    color: var(--white-500, #fff);
 }
 
 .vc-autoReactor-status-valid {
-    color: var(--text-feedback-positive, var(--status-positive, #23a55a));
+    background: var(--status-positive, var(--green-360, #23a55a));
 }
 
 .vc-autoReactor-status-invalid {
-    color: var(--text-feedback-critical, var(--status-danger, #f23f43));
+    background: var(--status-danger, var(--red-400, #f23f43));
+}
+
+.vc-autoReactor-status-empty {
+    color: var(--text-muted);
+    background: var(--background-modifier-active, var(--background-modifier-hover));
+}
+
+.vc-autoReactor-row-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 36px;
+    padding: 0 10px;
+    background-color: var(--input-background-default);
+    color: var(--text-default);
+    border: 1px solid var(--border-subtle, transparent);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.vc-autoReactor-row-input:hover {
+    border-color: var(--border-normal, var(--border-subtle));
+}
+
+.vc-autoReactor-row-input:focus {
+    border-color: var(--border-normal, var(--background-modifier-accent));
+}
+
+.vc-autoReactor-row-input::placeholder {
+    color: var(--text-muted);
 }
 
 .vc-autoReactor-delete {
-    flex-shrink: 0;
+    flex: 0 0 auto;
 }
 
 .vc-autoReactor-add {
-    margin-top: 0.5em;
+    width: 100%;
+    margin-top: 0.75em;
 }

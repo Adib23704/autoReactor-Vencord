@@ -8,7 +8,6 @@ import "./styles.css";
 
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
-import { Flex } from "@components/Flex";
 import { HeadingSecondary } from "@components/Heading";
 import { Paragraph } from "@components/Paragraph";
 import { classNameFactory } from "@utils/css";
@@ -17,7 +16,7 @@ import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Message } from "@vencord/discord-types";
 import { findByCodeLazy } from "@webpack";
-import { Menu, TextInput, Toasts, useState } from "@webpack/common";
+import { Menu, Toasts, useState } from "@webpack/common";
 
 const cl = classNameFactory("vc-autoReactor-");
 const logger = new Logger("AutoReactor");
@@ -81,13 +80,14 @@ const settings = definePluginSettings({
 function SlotInput({ initialValue, onChange }: { initialValue: string; onChange(v: string): void; }) {
     const [value, setValue] = useState(initialValue);
     return (
-        <TextInput
+        <input
+            type="text"
             className={cl("row-input")}
             placeholder="<:name:id>, <a:name:id> or a unicode emoji 😀"
             value={value}
             spellCheck={false}
-            onChange={setValue}
-            onBlur={() => value !== initialValue && setTimeout(() => onChange(value), 0)}
+            onChange={e => setValue(e.currentTarget.value)}
+            onBlur={() => value !== initialValue && onChange(value)}
         />
     );
 }
@@ -125,19 +125,19 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
                     or a built-in unicode emoji.
                 </Paragraph>
             </div>
-            <Flex flexDirection="column" style={{ gap: "0" }}>
+            <div className={cl("list")}>
                 {slots.map((slot, index) => {
-                    const valid = slot.value.trim() === "" ? null : parseEmoji(slot.value) !== null;
+                    const state = slot.value.trim() === ""
+                        ? "empty"
+                        : parseEmoji(slot.value) !== null ? "valid" : "invalid";
                     return (
                         <div key={slot.id} className={cl("row")}>
                             <span
-                                className={cl(
-                                    "status",
-                                    valid === true ? "status-valid" : valid === false ? "status-invalid" : ""
-                                )}
-                                title={valid === false ? "Invalid emoji" : valid === true ? "Valid emoji" : ""}
+                                className={cl("status", `status-${state}`)}
+                                aria-label={state === "invalid" ? "Invalid emoji" : state === "valid" ? "Valid emoji" : "Empty"}
+                                title={state === "invalid" ? "Invalid emoji" : state === "valid" ? "Valid emoji" : "Empty slot"}
                             >
-                                {valid === true ? "✔" : valid === false ? "✖" : ""}
+                                {state === "valid" ? "✓" : state === "invalid" ? "✕" : index + 1}
                             </span>
                             <SlotInput
                                 initialValue={slot.value}
@@ -146,7 +146,7 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
                             <Button
                                 className={cl("delete")}
                                 variant="dangerPrimary"
-                                size="min"
+                                size="small"
                                 onClick={() => onRemove(index)}
                             >
                                 Delete
@@ -154,14 +154,14 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
                         </div>
                     );
                 })}
-                <Button
-                    className={cl("add")}
-                    onClick={onAdd}
-                    disabled={slots.length >= MAX_EMOJIS || lastEmpty}
-                >
-                    {slots.length >= MAX_EMOJIS ? `Max ${MAX_EMOJIS} reached` : "Add Emoji"}
-                </Button>
-            </Flex>
+            </div>
+            <Button
+                className={cl("add")}
+                onClick={onAdd}
+                disabled={slots.length >= MAX_EMOJIS || lastEmpty}
+            >
+                {slots.length >= MAX_EMOJIS ? `Max ${MAX_EMOJIS} reached` : "Add Emoji"}
+            </Button>
         </>
     );
 }
