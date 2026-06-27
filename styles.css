@@ -1,0 +1,33 @@
+.vc-autoReactor-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.vc-autoReactor-row-input {
+    flex: 1;
+}
+
+.vc-autoReactor-status {
+    flex-shrink: 0;
+    font-size: 1.1em;
+    width: 1.2em;
+    text-align: center;
+}
+
+.vc-autoReactor-status-valid {
+    color: var(--text-feedback-positive, var(--status-positive, #23a55a));
+}
+
+.vc-autoReactor-status-invalid {
+    color: var(--text-feedback-critical, var(--status-danger, #f23f43));
+}
+
+.vc-autoReactor-delete {
+    flex-shrink: 0;
+}
+
+.vc-autoReactor-add {
+    margin-top: 0.5em;
+}
