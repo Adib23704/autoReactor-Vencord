@@ -16,7 +16,7 @@ import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Message } from "@vencord/discord-types";
 import { findByCodeLazy } from "@webpack";
-import { Menu, Toasts, useState } from "@webpack/common";
+import { ChannelStore, Toasts, useState } from "@webpack/common";
 
 const cl = classNameFactory("vc-autoReactor-");
 const logger = new Logger("AutoReactor");
@@ -166,73 +166,140 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
     );
 }
 
-let isReacting = false;
+interface ReactionJob {
+    channelId: string;
+    messageId: string;
+}
 
-async function autoReact(channel: Channel, message: Message) {
-    if (isReacting) {
-        Toasts.show({
-            id: Toasts.genId(),
-            type: Toasts.Type.MESSAGE,
-            message: "AutoReactor is still busy with the previous message."
-        });
-        return;
-    }
+const queue: ReactionJob[] = [];
+let isDraining = false;
 
-    const emojis = settings.store.emojiSlots
+function showToast(type: string, message: string) {
+    Toasts.show({ id: Toasts.genId(), type, message });
+}
+
+function getConfiguredEmojis(): ReactionEmoji[] {
+    return settings.store.emojiSlots
         .map(slot => parseEmoji(slot.value))
         .filter((e): e is ReactionEmoji => e !== null)
         .slice(0, MAX_EMOJIS);
+}
 
+function getDelay() {
+    return Math.max(MIN_DELAY_MS, settings.store.delayMs || 0);
+}
+
+async function runJob(job: ReactionJob) {
+    // Read settings per job so edits made while the queue is draining take effect.
+    const emojis = getConfiguredEmojis();
     if (emojis.length === 0) {
-        Toasts.show({
-            id: Toasts.genId(),
-            type: Toasts.Type.FAILURE,
-            message: "No valid emojis configured. Set them in AutoReactor settings."
-        });
+        showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
         return;
     }
 
-    const delay = Math.max(MIN_DELAY_MS, settings.store.delayMs || 0);
+    const delay = getDelay();
 
-    isReacting = true;
-    try {
-        for (let i = 0; i < emojis.length; i++) {
-            try {
-                addReaction(channel.id, message.id, emojis[i], "Message");
-            } catch (e) {
-                logger.error("Failed to add reaction", emojis[i], e);
-            }
-            if (i < emojis.length - 1) await sleep(delay);
+    for (let i = 0; i < emojis.length; i++) {
+        try {
+            addReaction(job.channelId, job.messageId, emojis[i], "Message");
+        } catch (e) {
+            logger.error("Failed to add reaction", emojis[i], e);
         }
-
-        Toasts.show({
-            id: Toasts.genId(),
-            type: Toasts.Type.SUCCESS,
-            message: `Added ${emojis.length} reaction${emojis.length === 1 ? "" : "s"}.`
-        });
-    } finally {
-        isReacting = false;
+        if (i < emojis.length - 1) await sleep(delay);
     }
+
+    const remaining = queue.length;
+    showToast(
+        Toasts.Type.SUCCESS,
+        `Added ${emojis.length} reaction${emojis.length === 1 ? "" : "s"}.`
+        + (remaining > 0 ? ` ${remaining} message${remaining === 1 ? "" : "s"} left in queue.` : "")
+    );
+}
+
+async function drainQueue() {
+    if (isDraining) return;
+    isDraining = true;
+
+    try {
+        while (queue.length > 0) {
+            const job = queue[0];
+            try {
+                await runJob(job);
+            } catch (e) {
+                logger.error("Failed to process queued message", job, e);
+            } finally {
+                // Stays at index 0 for the whole job so isQueued() sees it as in-flight.
+                queue.shift();
+            }
+            if (queue.length > 0) await sleep(getDelay());
+        }
+    } finally {
+        isDraining = false;
+    }
+}
+
+function isQueued(channelId: string, messageId: string) {
+    return queue.some(job => job.channelId === channelId && job.messageId === messageId);
+}
+
+function autoReact(channel: Channel, message: Message) {
+    if (isQueued(channel.id, message.id)) {
+        showToast(Toasts.Type.MESSAGE, "That message is already queued.");
+        return;
+    }
+
+    if (getConfiguredEmojis().length === 0) {
+        showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
+        return;
+    }
+
+    queue.push({ channelId: channel.id, messageId: message.id });
+
+    if (isDraining) {
+        showToast(Toasts.Type.MESSAGE, `Queued — position ${queue.length - 1} in line.`);
+    }
+
+    drainQueue();
+}
+
+function AutoReactIcon({ height = 24, width = 24, className }: { height?: number | string; width?: number | string; className?: string; }) {
+    return (
+        <svg
+            className={className}
+            height={height}
+            width={width}
+            viewBox="0 0 24 24"
+            fill="currentColor"
+        >
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10c.464 0 .921-.032 1.37-.093a6.96 6.96 0 0 1-.879-1.943c-.163.011-.327.036-.491.036-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8c0 .164-.025.328-.036.491a6.96 6.96 0 0 1 1.943.879c.06-.449.093-.906.093-1.37 0-5.523-4.477-10-10-10Z" />
+            <path d="M8.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM15.5 11a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM12 17.5c-2.03 0-3.79-1.06-4.7-2.62a.75.75 0 0 1 1.3-.76c.65 1.12 1.94 1.88 3.4 1.88.18 0 .35-.01.52-.04a6.98 6.98 0 0 1 .8-2.35c-.42.1-.86.15-1.32.15Z" />
+            <path d="M18 13a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm2.5 5.75h-1.75v1.75a.75.75 0 0 1-1.5 0v-1.75H15.5a.75.75 0 0 1 0-1.5h1.75V15.5a.75.75 0 0 1 1.5 0v1.75h1.75a.75.75 0 0 1 0 1.5Z" />
+        </svg>
+    );
 }
 
 export default definePlugin({
     name: "AutoReactor",
-    description: "Right-click a message and react with up to 10 preset emojis. Reactions are sent sequentially with a configurable delay to stay within Discord's rate limits.",
+    description: "Adds a button to the message actions bar that reacts with up to 10 preset emojis. Reactions are sent sequentially with a configurable delay to stay within Discord's rate limits, and multiple messages queue up instead of being rejected.",
     tags: ["Reactions", "Emotes", "Utility"],
     authors: [{ name: "__azuree__", id: 451657007791996929n }],
     settings,
 
-    contextMenus: {
-        "message"(children, { channel, message }: { channel: Channel; message: Message; }) {
-            if (!channel || !message || (message as any).deleted) return;
+    messagePopoverButton: {
+        icon: AutoReactIcon,
+        render(message) {
+            if ((message as any).deleted) return null;
 
-            children.push(
-                <Menu.MenuItem
-                    id="vc-auto-react"
-                    label="Auto React"
-                    action={() => autoReact(channel, message)}
-                />
-            );
+            const channel = ChannelStore.getChannel(message.channel_id);
+            if (!channel) return null;
+
+            return {
+                label: "Auto React",
+                icon: AutoReactIcon,
+                message,
+                channel,
+                onClick: () => autoReact(channel, message)
+            };
         }
     },
 
