@@ -16,7 +16,7 @@ import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Message } from "@vencord/discord-types";
 import { findByCodeLazy } from "@webpack";
-import { ChannelStore, Toasts, useState } from "@webpack/common";
+import { ChannelStore, MessageStore, Toasts, useState } from "@webpack/common";
 
 const cl = classNameFactory("vc-autoReactor-");
 const logger = new Logger("AutoReactor");
@@ -25,6 +25,7 @@ const addReaction = findByCodeLazy("MESSAGE_REACTION_ADD", "userHasReactedWithEm
     (channelId: string, messageId: string, emoji: ReactionEmoji, location?: string) => void;
 
 const MAX_EMOJIS = 10;
+const MAX_EXISTING_REACTIONS = 5;
 const MIN_DELAY_MS = 300;
 
 interface ReactionEmoji {
@@ -169,6 +170,7 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
 interface ReactionJob {
     channelId: string;
     messageId: string;
+    emojis: ReactionEmoji[];
 }
 
 const queue: ReactionJob[] = [];
@@ -190,12 +192,8 @@ function getDelay() {
 }
 
 async function runJob(job: ReactionJob) {
-    // Read settings per job so edits made while the queue is draining take effect.
-    const emojis = getConfiguredEmojis();
-    if (emojis.length === 0) {
-        showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
-        return;
-    }
+    const emojis = job.emojis;
+    if (emojis.length === 0) return;
 
     const delay = getDelay();
 
@@ -242,21 +240,52 @@ function isQueued(channelId: string, messageId: string) {
     return queue.some(job => job.channelId === channelId && job.messageId === messageId);
 }
 
-function autoReact(channel: Channel, message: Message) {
+function autoReact(channel: Channel, message: Message, isShift = false) {
     if (isQueued(channel.id, message.id)) {
         showToast(Toasts.Type.MESSAGE, "That message is already queued.");
         return;
     }
 
-    if (getConfiguredEmojis().length === 0) {
-        showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
-        return;
+    let emojis: ReactionEmoji[];
+
+    if (isShift) {
+        const targetMessage = MessageStore.getMessage(channel.id, message.id) ?? message;
+        const existingReactions = targetMessage.reactions;
+
+        if (!existingReactions || existingReactions.length === 0) {
+            showToast(Toasts.Type.FAILURE, "No reactions found on this message.");
+            return;
+        }
+
+        emojis = existingReactions
+            .slice(0, MAX_EXISTING_REACTIONS)
+            .map(r => ({
+                id: r.emoji.id ?? null,
+                name: r.emoji.name,
+                animated: Boolean(r.emoji.animated),
+            }))
+            .filter(e => Boolean(e.name));
+
+        if (emojis.length === 0) {
+            showToast(Toasts.Type.FAILURE, "No valid reactions found on this message.");
+            return;
+        }
+    } else {
+        emojis = getConfiguredEmojis();
+        if (emojis.length === 0) {
+            showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
+            return;
+        }
     }
 
-    queue.push({ channelId: channel.id, messageId: message.id });
+    queue.push({
+        channelId: channel.id,
+        messageId: message.id,
+        emojis,
+    });
 
     if (isDraining) {
-        showToast(Toasts.Type.MESSAGE, `Queued — position ${queue.length - 1} in line.`);
+        showToast(Toasts.Type.MESSAGE, `Queued - position ${queue.length - 1} in line.`);
     }
 
     drainQueue();
@@ -280,7 +309,7 @@ function AutoReactIcon({ height = 24, width = 24, className }: { height?: number
 
 export default definePlugin({
     name: "AutoReactor",
-    description: "Adds a button to the message actions bar that reacts with up to 10 preset emojis. Reactions are sent sequentially with a configurable delay to stay within Discord's rate limits, and multiple messages queue up instead of being rejected.",
+    description: "Adds a button to the message actions bar that reacts with up to 10 preset emojis (or Shift+Click to react with up to 5 existing reactions from the message). Reactions are sent sequentially with a configurable delay to stay within Discord's rate limits, and multiple messages queue up instead of being rejected.",
     tags: ["Reactions", "Emotes", "Utility"],
     authors: [{ name: "__azuree__", id: 451657007791996929n }],
     settings,
@@ -298,7 +327,7 @@ export default definePlugin({
                 icon: AutoReactIcon,
                 message,
                 channel,
-                onClick: () => autoReact(channel, message)
+                onClick: e => autoReact(channel, message, e.shiftKey)
             };
         }
     },
