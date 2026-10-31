@@ -8,7 +8,7 @@ import "./styles.css";
 
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
-import { HeadingSecondary } from "@components/Heading";
+import { Heading } from "@components/Heading";
 import { Paragraph } from "@components/Paragraph";
 import { classNameFactory } from "@utils/css";
 import { Logger } from "@utils/Logger";
@@ -16,7 +16,7 @@ import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import { Channel, Message } from "@vencord/discord-types";
 import { findByCodeLazy } from "@webpack";
-import { ChannelStore, MessageStore, Toasts, useState } from "@webpack/common";
+import { ChannelStore, MessageStore, useState, showToast } from "@webpack/common";
 
 const cl = classNameFactory("vc-autoReactor-");
 const logger = new Logger("AutoReactor");
@@ -119,7 +119,7 @@ function EmojiSlotsEditor({ slots }: { slots: EmojiSlot[]; }) {
     return (
         <>
             <div>
-                <HeadingSecondary>Reaction Emojis</HeadingSecondary>
+                <Heading tag="h3">Reaction Emojis</Heading>
                 <Paragraph>
                     Up to {MAX_EMOJIS} emojis added (in order) when you click "Auto React" on a message.
                     Paste custom emoji markdown (<code>{"<:name:id>"}</code> / <code>{"<a:name:id>"}</code>)
@@ -176,10 +176,6 @@ interface ReactionJob {
 const queue: ReactionJob[] = [];
 let isDraining = false;
 
-function showToast(type: string, message: string) {
-    Toasts.show({ id: Toasts.genId(), type, message });
-}
-
 function getConfiguredEmojis(): ReactionEmoji[] {
     return settings.store.emojiSlots
         .map(slot => parseEmoji(slot.value))
@@ -207,11 +203,7 @@ async function runJob(job: ReactionJob) {
     }
 
     const remaining = queue.length;
-    showToast(
-        Toasts.Type.SUCCESS,
-        `Added ${emojis.length} reaction${emojis.length === 1 ? "" : "s"}.`
-        + (remaining > 0 ? ` ${remaining} message${remaining === 1 ? "" : "s"} left in queue.` : "")
-    );
+    showToast({ variant: 'success', text: `Added ${emojis.length} reaction${emojis.length === 1 ? "" : "s"}.` + (remaining > 0 ? ` ${remaining} message${remaining === 1 ? "" : "s"} left in queue.` : "") });
 }
 
 async function drainQueue() {
@@ -242,7 +234,7 @@ function isQueued(channelId: string, messageId: string) {
 
 function autoReact(channel: Channel, message: Message, isShift = false) {
     if (isQueued(channel.id, message.id)) {
-        showToast(Toasts.Type.MESSAGE, "That message is already queued.");
+        showToast({ variant: 'default', text: "That message is already queued." });
         return;
     }
 
@@ -253,7 +245,7 @@ function autoReact(channel: Channel, message: Message, isShift = false) {
         const existingReactions = targetMessage.reactions;
 
         if (!existingReactions || existingReactions.length === 0) {
-            showToast(Toasts.Type.FAILURE, "No reactions found on this message.");
+            showToast({ variant: 'critical', text: "No reactions found on this message." });
             return;
         }
 
@@ -267,13 +259,13 @@ function autoReact(channel: Channel, message: Message, isShift = false) {
             .filter(e => Boolean(e.name));
 
         if (emojis.length === 0) {
-            showToast(Toasts.Type.FAILURE, "No valid reactions found on this message.");
+            showToast({ variant: 'critical', text: "No valid reactions found on this message." });
             return;
         }
     } else {
         emojis = getConfiguredEmojis();
         if (emojis.length === 0) {
-            showToast(Toasts.Type.FAILURE, "No valid emojis configured. Set them in AutoReactor settings.");
+            showToast({ variant: 'critical', text: "No valid emojis configured. Set them in AutoReactor settings." });
             return;
         }
     }
@@ -285,7 +277,7 @@ function autoReact(channel: Channel, message: Message, isShift = false) {
     });
 
     if (isDraining) {
-        showToast(Toasts.Type.MESSAGE, `Queued - position ${queue.length - 1} in line.`);
+        showToast({ variant: 'default', text: `Queued - position ${queue.length - 1} in line.` });
     }
 
     drainQueue();
